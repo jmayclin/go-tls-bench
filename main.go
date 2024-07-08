@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	certFile = "certs/rsa2048/server-chain.pem"
-	keyFile  = "certs/rsa2048/server-key.pem"
-	caFile   = "certs/rsa2048/ca-cert.pem"
+	certFile = "certs/rsae_pkcs_2048_sha256/server-chain.pem"
+	keyFile  = "certs/rsae_pkcs_2048_sha256/server-key.pem"
+	caFile   = "certs/rsae_pkcs_2048_sha256/ca-cert.pem"
 )
 
 func tlsServerConfig() *tls.Config {
@@ -40,6 +40,7 @@ func resumptionServerConfig() *tls.Config {
 		log.Fatalf("failed to load key pair: %v", err)
 	}
 
+	// TODO: is explicitly disabling session ticket necessary?
 	config := tls.Config{
 		Certificates:           []tls.Certificate{cert},
 		SessionTicketKey:       sessionTicketKeys[0],
@@ -85,6 +86,50 @@ func resumptionClientConfig() *tls.Config {
 	}
 }
 
+func harness_handshake(clientConfig, serverConfig *tls.Config) {
+	clientToServer := make(chan []byte)
+	serverToClient := make(chan []byte)
+
+	clientDone := false
+	serverDone := false
+
+	clientConn := tls.Client(newDummyConn("client", serverToClient, clientToServer, &clientDone), clientConfig)
+	serverConn := tls.Server(newDummyConn("server", clientToServer, serverToClient, &serverDone), serverConfig)
+
+	//done := make(chan bool)
+
+	go func() {
+		if err := serverConn.Handshake(); err != nil {
+			log.Println("server handshake failed")
+			log.Println((err))
+		}
+		readBuf := make([]byte, 1)
+		n, _ := serverConn.Read(readBuf)
+		if n != 0 {
+			log.Println("ERROR: unexpected read")
+		}
+
+		serverDone = true
+		log.Println("server is closing")
+		serverConn.Close()
+	}()
+
+	if err := clientConn.Handshake(); err != nil {
+		log.Fatalf("client handshake failed: %v", err)
+	}
+	state := clientConn.ConnectionState()
+	if !state.HandshakeComplete {
+		log.Fatal("handshake was not complete")
+	}
+	readBuf := make([]byte, 1)
+	clientDone = true
+	// this read is necessary to get the session ticket with is a post handshake
+	// message
+	clientConn.Read(readBuf)
+	clientConn.Close()
+}
+
+// TODO: remove the name, only used for debug messages/logging
 type dummyConn struct {
 	name    string
 	readCh  chan []byte
@@ -162,6 +207,8 @@ type dummyAddr struct{}
 func (dummyAddr) Network() string { return "dummy" }
 func (dummyAddr) String() string  { return "dummy" }
 
+// TODO: This was only used for debugging, when I forget that I have to call read to retrieve the NST bc TLS 1.3 shenanigans
+// remove this and just use the underlying NewLRUClientSessionCache
 type loggingSessionCache struct {
 	cache tls.ClientSessionCache
 }
