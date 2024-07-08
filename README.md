@@ -1,32 +1,14 @@
 # Go TLS Bench
 `go test -bench=. -v`
 
-| Cert     | graviton 2 | graviton 3 |
-| -------- |            | ------- |
-| rsa2048  |            | 2.29 ms |
-| ecdsa256 |            | 0.75 ms |
-| ecdsa384 |            | 3.64 ms |
+| Cert       | graviton 2 | graviton 3 |
+| ---------  | ---------- | ------- |
+| rsa2048    |  6.27 ms   | 2.29 ms |
+| ecdsa256   |  2.09 ms   | 0.75 ms |
+| ecdsa384   |  9.12 ms   | 3.64 ms |
+| resumption |  1.05 ms   | 0.36 ms |
 
-### Graviton 3
-```
-goos: linux
-goarch: arm64
-pkg: tls-bench
-BenchmarkServerAuth
-BenchmarkServerAuth-16               524           2286531 ns/op
-BenchmarkResumption
-BenchmarkResumption-16              3060            363591 ns/op
-```
-### Graviton 2
-```
-goos: linux
-goarch: arm64
-pkg: tls-bench
-BenchmarkServerAuth
-BenchmarkServerAuth-2   	     190	   6259043 ns/op
-BenchmarkResumption
-BenchmarkResumption-2   	    1090	   1055482 ns/op
-```
+
 ## Parameters
 Handshakes use ServerAuth or Resumption (as indicated by the bench name) with RSA2048 certificates. The cert chain is 3 long, consisting of a trusted CA, intermediate, and leaf cert. The above numbers were collected on the Graviton 3 platform.
 
@@ -53,3 +35,33 @@ I have done some *horrendous* things to get my shutdown logic to work with the b
 Side Note: I wonder how many of these were related to my usage of ChatGPT. I generally restrict ChatGPT usage to "interactive documentation search companion" rather than actual author of anything. 
 1. Maybe I struggled with the language concepts because ChatGPT allowed me to leapfrog the basic learning process, causing me to stumble into confusing concepts without any of the prerequisites. Kinda like if a video game has really bad level scaling dynamics.
 2. ChatGPT won't ever tell you "that's a stupid idea, do this instead", or at least I don't think to explicitly prompt it for that. I think if I had talked to an engineer familiar with go about my "benchmark using ring buffer/shared memory" they could have told me from the start that that was a moderately stupid idea and I should use channels instead.
+
+### Graviton 3 Raw
+```
+goos: linux
+goarch: arm64
+pkg: tls-bench
+BenchmarkServerAuthRsa2048
+BenchmarkServerAuthRsa2048-16                524           2286291 ns/op
+BenchmarkServerAuthEcdsa256
+BenchmarkServerAuthEcdsa256-16              1576            749511 ns/op
+BenchmarkServerAuthEcdsa384
+BenchmarkServerAuthEcdsa384-16               327           3642075 ns/op
+BenchmarkResumption
+BenchmarkResumption-16                      3172            360598 ns/op
+```
+
+### Graviton 2 Raw
+```
+goos: linux
+goarch: arm64
+pkg: tls-bench
+BenchmarkServerAuthRsa2048
+BenchmarkServerAuthRsa2048-2    	     190	   6272629 ns/op
+BenchmarkServerAuthEcdsa256
+BenchmarkServerAuthEcdsa256-2   	     576	   2091612 ns/op
+BenchmarkServerAuthEcdsa384
+BenchmarkServerAuthEcdsa384-2   	     130	   9120546 ns/op
+BenchmarkResumption
+BenchmarkResumption-2           	    1083	   1052870 ns/op
+```
