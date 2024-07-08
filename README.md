@@ -1,14 +1,26 @@
 # Go TLS Bench
+`go test -bench=. -v`
+
+### Graviton 3
 ```
 goos: linux
 goarch: arm64
 pkg: tls-bench
-BenchmarkSharedMemHandshake
-BenchmarkSharedMemHandshake-16               526           2257931 ns/op
-BenchmarkSharedMemResumption
-BenchmarkSharedMemResumption-16             3124            363521 ns/op
+BenchmarkServerAuth
+BenchmarkServerAuth-16               524           2286531 ns/op
+BenchmarkResumption
+BenchmarkResumption-16              3060            363591 ns/op
 ```
-
+### Graviton 2
+```
+goos: linux
+goarch: arm64
+pkg: tls-bench
+BenchmarkServerAuth
+BenchmarkServerAuth-2   	     190	   6259043 ns/op
+BenchmarkResumption
+BenchmarkResumption-2   	    1090	   1055482 ns/op
+```
 ## Parameters
 Handshakes use ServerAuth or Resumption (as indicated by the bench name) with RSA2048 certificates. The cert chain is 3 long, consisting of a trusted CA, intermediate, and leaf cert. The above numbers were collected on the Graviton 3 platform.
 
