@@ -8,9 +8,8 @@
 | ecdsa384   |  9.12 ms   | 3.64 ms |
 | resumption |  1.05 ms   | 0.36 ms |
 
-
 ## Parameters
-Handshakes use ServerAuth or Resumption (as indicated by the bench name) with RSA2048 certificates. The cert chain is 3 long, consisting of a trusted CA, intermediate, and leaf cert. The above numbers were collected on the Graviton 3 platform.
+The cert chain is 3 long, consisting of a trusted CA, intermediate, and leaf cert. Handshake either use server auth (client verifies server cert) or resumption, as indicated by the table columns.
 
 `go version go1.22.2 linux/arm64`
 
