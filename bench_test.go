@@ -1,7 +1,6 @@
-package main
+package susgobench
 
 import (
-	"bytes"
 	"crypto/tls"
 	"log"
 	"net"
@@ -108,10 +107,50 @@ func runServer(config *tls.Config) error {
 // 	}
 // }
 
-func TestDoesThisWork(t *testing.T) {
-	if 3 != 2 {
-		t.Fatal("this failed as expected")
+func BenchmarkSharedMemHandshake(b *testing.B) {
+	err := os.Setenv("GODEBUG", "tls=1")
+	if err != nil {
+		log.Fatalf("failed to set GODEBUG environment variable: %v", err)
 	}
+
+	serverConfig := tlsServerConfig()
+	clientConfig := tlsClientConfig()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+
+		clientToServer := make(chan []byte)
+		serverToClient := make(chan []byte)
+
+		clientDone := false
+		serverDone := false
+
+		clientConn := tls.Client(newDummyConn("client", serverToClient, clientToServer, &clientDone), clientConfig)
+		serverConn := tls.Server(newDummyConn("server", clientToServer, serverToClient, &serverDone), serverConfig)
+
+		//done := make(chan bool)
+
+		go func() {
+			if err := serverConn.Handshake(); err != nil {
+				b.Logf("server handshake failed: %v", err)
+			}
+			serverDone = true
+			serverConn.Close()
+		}()
+
+		if err := clientConn.Handshake(); err != nil {
+			b.Fatalf("client handshake failed: %v", err)
+		}
+		state := clientConn.ConnectionState()
+		if !state.HandshakeComplete {
+			b.Fatal("handshake was not complete")
+		}
+		//log.Printf("Negotiated cipher suite: %s", tls.CipherSuiteName(state.CipherSuite))
+
+		clientDone = true
+		clientConn.Close()
+	}
+
 }
 
 func TestSharedMemHandshake(t *testing.T) {
@@ -123,60 +162,106 @@ func TestSharedMemHandshake(t *testing.T) {
 	serverConfig := tlsServerConfig()
 	clientConfig := tlsClientConfig()
 
-	clientToServer := &bytes.Buffer{}
-	serverToClient := &bytes.Buffer{}
+	clientToServer := make(chan []byte)
+	serverToClient := make(chan []byte)
 
-	clientConn := tls.Client(&dummyConn{name: "client", r: serverToClient, w: clientToServer}, clientConfig)
-	serverConn := tls.Server(&dummyConn{name: "server", r: clientToServer, w: serverToClient}, serverConfig)
+	clientDone := false
+	serverDone := false
+
+	clientConn := tls.Client(newDummyConn("client", serverToClient, clientToServer, &clientDone), clientConfig)
+	serverConn := tls.Server(newDummyConn("server", clientToServer, serverToClient, &serverDone), serverConfig)
+
+	//done := make(chan bool)
 
 	t.Log("making the channel")
-	done := make(chan bool)
 
 	go func() {
-		defer close(done)
 		if err := serverConn.Handshake(); err != nil {
 			t.Log("server handshake failed")
 			t.Log((err))
 			//b.Fatalf("server handshake failed: %v", err)
 		}
+		serverDone = true
+		serverConn.Close()
 	}()
 
 	if err := clientConn.Handshake(); err != nil {
 		t.Fatalf("client handshake failed: %v", err)
 	}
-	log.Println(clientConn.ConnectionState().HandshakeComplete)
 	state := clientConn.ConnectionState()
-	log.Printf("Negotiated cipher suite: %s", tls.CipherSuiteName(state.CipherSuite))
+	if !state.HandshakeComplete {
+		t.Fatal("handshake was not complete")
+	}
 
-	<-done
-
+	clientDone = true
 	clientConn.Close()
-	serverConn.Close()
 }
 
 type dummyConn struct {
-	name string
-	r    *bytes.Buffer
-	w    *bytes.Buffer
+	name    string
+	readCh  chan []byte
+	writeCh chan []byte
+	readBuf []byte
+	closing *bool
 }
 
-func (c *dummyConn) Read(p []byte) (n int, err error) {
-	log.Printf("READ: %s available bytes %d\n", c.name, c.r.Available())
-	log.Printf("READ: %s reading up to %d bytes\n", c.name, len(p))
-	read, err := c.r.Read(p)
+func newDummyConn(name string, readCh, writeCh chan []byte, closing *bool) *dummyConn {
+	return &dummyConn{
+		name:    name,
+		readCh:  readCh,
+		writeCh: writeCh,
+		closing: closing,
+	}
+}
 
-	return read, nil
+func (c *dummyConn) Read(b []byte) (n int, err error) {
+	//log.Printf("READ %s", c.name)
+	if len(c.readBuf) == 0 {
+		c.readBuf = <-c.readCh
+	}
+	n = copy(b, c.readBuf)
+	c.readBuf = c.readBuf[n:]
+	//log.Printf("READ %s done", c.name)
+	return n, nil
 }
-func (c *dummyConn) Write(p []byte) (n int, err error) {
-	log.Printf("WRITE %s writing %d bytes\n", c.name, len(p))
-	return c.w.Write(p)
+
+func (c *dummyConn) Write(b []byte) (n int, err error) {
+	//log.Printf("WRITE %s", c.name)
+	if *c.closing {
+		// pretend the write was successful
+		//log.Printf("WRITE %s special done", c.name)
+		return len(b), nil
+
+	}
+	c.writeCh <- b
+	//log.Printf("WRITE %s done", c.name)
+
+	return len(b), nil
 }
-func (c *dummyConn) Close() error                       { return nil }
-func (c *dummyConn) LocalAddr() net.Addr                { return dummyAddr{} }
-func (c *dummyConn) RemoteAddr() net.Addr               { return dummyAddr{} }
-func (c *dummyConn) SetDeadline(t time.Time) error      { return nil }
-func (c *dummyConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *dummyConn) SetWriteDeadline(t time.Time) error { return nil }
+
+func (c *dummyConn) Close() error {
+	return nil
+}
+
+func (c *dummyConn) LocalAddr() net.Addr {
+	return dummyAddr{}
+}
+
+func (c *dummyConn) RemoteAddr() net.Addr {
+	return dummyAddr{}
+}
+
+func (c *dummyConn) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *dummyConn) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (c *dummyConn) SetWriteDeadline(t time.Time) error {
+	return nil
+}
 
 type dummyAddr struct{}
 

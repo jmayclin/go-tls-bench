@@ -1,4 +1,4 @@
-package main
+package susgobench
 
 import (
 	"crypto/rand"
