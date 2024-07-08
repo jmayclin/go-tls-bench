@@ -164,10 +164,10 @@ cert-gen () {
 if [[ $1 != "clean" ]]
 then
     #         key        signature   key_size     digest         directory
-    # cert-gen   ec          ecdsa       256        SHA256      ec_ecdsa_p256_sha256
+    cert-gen   ec          ecdsa       256        SHA256      ec_ecdsa_p256_sha256
     # cert-gen   ec          ecdsa       256        SHA384      ec_ecdsa_p256_sha384
     # cert-gen   ec          ecdsa       384        SHA256      ec_ecdsa_p384_sha256
-    # cert-gen   ec          ecdsa       384        SHA384      ec_ecdsa_p384_sha384
+    cert-gen   ec          ecdsa       384        SHA384      ec_ecdsa_p384_sha384
     # cert-gen   ec          ecdsa       521        SHA384      ec_ecdsa_p521_sha384
     # cert-gen   ec          ecdsa       521        SHA512      ec_ecdsa_p521_sha512
     # cert-gen   rsa        pkcsv1.5     2048       SHA1        rsae_pkcs_2048_sha1

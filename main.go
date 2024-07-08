@@ -16,8 +16,39 @@ const (
 	caFile   = "certs/rsae_pkcs_2048_sha256/ca-cert.pem"
 )
 
-func tlsServerConfig() *tls.Config {
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+// CertFlavor -> (cert purpose -> cert path)
+var CertMap = map[CertFlavor]map[string]string{
+	Rsa2048: {
+		"certFile": "certs/rsae_pkcs_2048_sha256/server-chain.pem",
+		"keyFile":  "certs/rsae_pkcs_2048_sha256/server-key.pem",
+		"caFile":   "certs/rsae_pkcs_2048_sha256/ca-cert.pem",
+	},
+	Ecdsa256: {
+		"certFile": "certs/ec_ecdsa_p256_sha256/server-chain.pem",
+		"keyFile":  "certs/ec_ecdsa_p256_sha256/server-key.pem",
+		"caFile":   "certs/ec_ecdsa_p256_sha256/ca-cert.pem",
+	},
+	Ecdsa384: {
+		"certFile": "certs/ec_ecdsa_p384_sha384/server-chain.pem",
+		"keyFile":  "certs/ec_ecdsa_p384_sha384/server-key.pem",
+		"caFile":   "certs/ec_ecdsa_p384_sha384/ca-cert.pem",
+	},
+}
+
+var CertFlavors = []CertFlavor{Rsa2048, Ecdsa256, Ecdsa384}
+
+// Go doesn't have enums bc it hates me. I think this is the "go-y" way to do this?
+type CertFlavor int
+
+const (
+	Rsa2048 CertFlavor = iota
+	Ecdsa256
+	Ecdsa384
+)
+
+func tlsServerConfig(certFlavor CertFlavor) *tls.Config {
+	// global vars are almost certainly a bag idea, right?
+	cert, err := tls.LoadX509KeyPair(CertMap[certFlavor]["certFile"], CertMap[certFlavor]["keyFile"])
 	if err != nil {
 		log.Fatalf("failed to load key pair: %v", err)
 	}
@@ -27,7 +58,7 @@ func tlsServerConfig() *tls.Config {
 	}
 }
 
-func resumptionServerConfig() *tls.Config {
+func resumptionServerConfig(certFlavor CertFlavor) *tls.Config {
 
 	// Generate session ticket keys
 	sessionTicketKeys := make([][32]byte, 1)
@@ -35,7 +66,7 @@ func resumptionServerConfig() *tls.Config {
 		log.Fatalf("failed to generate session ticket key: %v", err)
 	}
 
-	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	cert, err := tls.LoadX509KeyPair(CertMap[certFlavor]["certFile"], CertMap[certFlavor]["keyFile"])
 	if err != nil {
 		log.Fatalf("failed to load key pair: %v", err)
 	}
@@ -50,8 +81,8 @@ func resumptionServerConfig() *tls.Config {
 	return &config
 }
 
-func tlsClientConfig() *tls.Config {
-	caCert, err := os.ReadFile(caFile)
+func tlsClientConfig(certFlavor CertFlavor) *tls.Config {
+	caCert, err := os.ReadFile(CertMap[certFlavor]["caFile"])
 	if err != nil {
 		log.Fatalf("failed to read CA certificate: %v", err)
 	}
@@ -67,8 +98,8 @@ func tlsClientConfig() *tls.Config {
 	}
 }
 
-func resumptionClientConfig() *tls.Config {
-	caCert, err := os.ReadFile(caFile)
+func resumptionClientConfig(certFlavor CertFlavor) *tls.Config {
+	caCert, err := os.ReadFile(CertMap[certFlavor]["caFile"])
 	if err != nil {
 		log.Fatalf("failed to read CA certificate: %v", err)
 	}

@@ -1,6 +1,12 @@
 # Go TLS Bench
 `go test -bench=. -v`
 
+| Cert     | graviton 2 | graviton 3 |
+| -------- |            | ------- |
+| rsa2048  |            | 2.29 ms |
+| ecdsa256 |            | 0.75 ms |
+| ecdsa384 |            | 3.64 ms |
+
 ### Graviton 3
 ```
 goos: linux
