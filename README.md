@@ -12,6 +12,8 @@ BenchmarkSharedMemResumption-16             3124            363521 ns/op
 ## Parameters
 Handshakes use ServerAuth or Resumption (as indicated by the bench name) with RSA2048 certificates. The cert chain is 3 long, consisting of a trusted CA, intermediate, and leaf cert. The above numbers were collected on the Graviton 3 platform.
 
+`go version go1.22.2 linux/arm64`
+
 ## Implementation
 Disclaimer: I am very much not a Go programmer, this was stapled together from snippets that I found over the internet. It is largely drawing from similar work that we've done in s2n-tls.
 
