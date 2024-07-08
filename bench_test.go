@@ -10,42 +10,68 @@ import (
 	"time"
 )
 
-func TestLocalHostHandshake(t *testing.T) {
-	serverConfig := tlsServerConfig()
-	clientConfig := tlsClientConfig()
+func runServer(config *tls.Config) error {
 
-	listener, err := tls.Listen("tcp", "127.0.0.1:8444", serverConfig)
+	listener, err := tls.Listen("tcp", "localhost:8443", config)
 	if err != nil {
-		t.Fatalf("failed to listen: %v", err)
+		return err
 	}
 	defer listener.Close()
 
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				log.Printf("failed to accept connection: %v", err)
-				continue
-			}
-			go func() {
-				tlsConn := conn.(*tls.Conn)
-				if err := tlsConn.Handshake(); err != nil {
-					log.Printf("server handshake failed: %v", err)
-				}
-				log.Println(tlsConn.ConnectionState())
-				conn.Close()
-			}()
+	log.Println("Server is listening on localhost:8443")
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Printf("failed to accept connection: %v", err)
+			continue
 		}
-	}()
 
-	time.Sleep(500 * time.Millisecond)
-
-	conn, err := tls.Dial("tcp", "127.0.0.1:8444", clientConfig)
-	if err != nil {
-		t.Fatalf("client handshake failed: %v", err)
+		tlsConn := conn.(*tls.Conn)
+		tlsConn.Handshake()
+		state := conn.(*tls.Conn).ConnectionState()
+		log.Printf("Negotiated cipher suite: %s", tls.CipherSuiteName(state.CipherSuite))
+		tlsConn.Close()
+		//go handleConnection(conn)
 	}
-	conn.Close()
 }
+
+// func TestLocalHostHandshake(t *testing.T) {
+// 	serverConfig := tlsServerConfig()
+// 	clientConfig := tlsClientConfig()
+
+// 	listener, err := tls.Listen("tcp", "127.0.0.1:8444", serverConfig)
+// 	if err != nil {
+// 		t.Fatalf("failed to listen: %v", err)
+// 	}
+// 	defer listener.Close()
+
+// 	go func() {
+// 		for {
+// 			conn, err := listener.Accept()
+// 			if err != nil {
+// 				log.Printf("failed to accept connection: %v", err)
+// 				continue
+// 			}
+// 			go func() {
+// 				tlsConn := conn.(*tls.Conn)
+// 				if err := tlsConn.Handshake(); err != nil {
+// 					log.Printf("server handshake failed: %v", err)
+// 				}
+// 				log.Println(tlsConn.ConnectionState())
+// 				conn.Close()
+// 			}()
+// 		}
+// 	}()
+
+// 	time.Sleep(500 * time.Millisecond)
+
+// 	conn, err := tls.Dial("tcp", "127.0.0.1:8444", clientConfig)
+// 	if err != nil {
+// 		t.Fatalf("client handshake failed: %v", err)
+// 	}
+// 	conn.Close()
+// }
 
 // func SharedMemTest(b *testing.B) {
 // 	serverConfig := tlsServerConfig()
@@ -100,8 +126,8 @@ func TestSharedMemHandshake(t *testing.T) {
 	clientToServer := &bytes.Buffer{}
 	serverToClient := &bytes.Buffer{}
 
-	clientConn := tls.Client(&dummyConn{r: serverToClient, w: clientToServer}, clientConfig)
-	serverConn := tls.Server(&dummyConn{r: clientToServer, w: serverToClient}, serverConfig)
+	clientConn := tls.Client(&dummyConn{name: "client", r: serverToClient, w: clientToServer}, clientConfig)
+	serverConn := tls.Server(&dummyConn{name: "server", r: clientToServer, w: serverToClient}, serverConfig)
 
 	t.Log("making the channel")
 	done := make(chan bool)
@@ -118,7 +144,9 @@ func TestSharedMemHandshake(t *testing.T) {
 	if err := clientConn.Handshake(); err != nil {
 		t.Fatalf("client handshake failed: %v", err)
 	}
-	log.Println(clientConn.ConnectionState())
+	log.Println(clientConn.ConnectionState().HandshakeComplete)
+	state := clientConn.ConnectionState()
+	log.Printf("Negotiated cipher suite: %s", tls.CipherSuiteName(state.CipherSuite))
 
 	<-done
 
@@ -127,12 +155,22 @@ func TestSharedMemHandshake(t *testing.T) {
 }
 
 type dummyConn struct {
-	r *bytes.Buffer
-	w *bytes.Buffer
+	name string
+	r    *bytes.Buffer
+	w    *bytes.Buffer
 }
 
-func (c *dummyConn) Read(p []byte) (n int, err error)   { return c.r.Read(p) }
-func (c *dummyConn) Write(p []byte) (n int, err error)  { return c.w.Write(p) }
+func (c *dummyConn) Read(p []byte) (n int, err error) {
+	log.Printf("READ: %s available bytes %d\n", c.name, c.r.Available())
+	log.Printf("READ: %s reading up to %d bytes\n", c.name, len(p))
+	read, err := c.r.Read(p)
+
+	return read, nil
+}
+func (c *dummyConn) Write(p []byte) (n int, err error) {
+	log.Printf("WRITE %s writing %d bytes\n", c.name, len(p))
+	return c.w.Write(p)
+}
 func (c *dummyConn) Close() error                       { return nil }
 func (c *dummyConn) LocalAddr() net.Addr                { return dummyAddr{} }
 func (c *dummyConn) RemoteAddr() net.Addr               { return dummyAddr{} }

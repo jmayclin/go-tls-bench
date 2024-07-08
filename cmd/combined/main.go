@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"log"
 	"net"
+	"os"
 	"time"
 )
 
@@ -33,15 +35,20 @@ func main() {
 	}
 }
 
-func runServer() error {
+func tlsServerConfig() *tls.Config {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return err
+		log.Fatalf("failed to load key pair: %v", err)
 	}
 
-	config := &tls.Config{
+	return &tls.Config{
 		Certificates: []tls.Certificate{cert},
 	}
+}
+
+func runServer() error {
+
+	config := tlsServerConfig()
 
 	listener, err := tls.Listen("tcp", "localhost:8443", config)
 	if err != nil {
@@ -82,10 +89,25 @@ func handleConnection(conn net.Conn) {
 	log.Printf("Wrote %d bytes to client.", n)
 }
 
-func runClient() error {
-	config := &tls.Config{
-		InsecureSkipVerify: true, // Skip certificate verification for this example
+func tlsClientConfig() *tls.Config {
+	caCert, err := os.ReadFile(caFile)
+	if err != nil {
+		log.Fatalf("failed to read CA certificate: %v", err)
 	}
+
+	caCertPool := x509.NewCertPool()
+	if !caCertPool.AppendCertsFromPEM(caCert) {
+		log.Fatalf("failed to add CA certificate to pool")
+	}
+
+	return &tls.Config{
+		RootCAs:    caCertPool,
+		ServerName: "localhost",
+	}
+}
+
+func runClient() error {
+	config := tlsClientConfig()
 
 	conn, err := tls.Dial("tcp", "localhost:8443", config)
 	if err != nil {
